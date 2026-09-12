@@ -75,3 +75,17 @@ Visit **`http://127.0.0.1:5173/`** in your browser to experience **Nexaura.exe**
 ```bash
 npm run build
 ```
+
+---
+
+## ⚡ Demo Showcase Account & Security Notice
+
+Nexaura includes a dedicated, preconfigured showcase account at maximum operative level (Level 50, all attributes at 99, 99,999 Credits, all achievements unlocked and claimed, all Black Market cyberware equipped, completed directives, and vanquished S-Tier boss battle).
+
+### Demo Credentials (Development & Showcase Only)
+- **Operative Callsign**: `demo_netrunner` (or email: `demo@nexaura.exe`)
+- **Cybernetic Passkey**: Configured in `backend/.env` under `DEMO_PASSWORD` (default: `SetYourDemoPasswordHere`)
+
+> [!WARNING]
+> **Production Deployment Security Warning**:
+> The demo account credentials (`DEMO_PASSWORD`) are strictly for local showcase and development demonstration. You **MUST** change `DEMO_PASSWORD` in `backend/.env` to a secure secret or disable the demo account before deploying Nexaura.exe to any public or production environment.

@@ -94,7 +94,10 @@ const SHOP_CATALOG = [
 export const shopController = {
   getItems: async (req, res) => {
     try {
-      const userId = req.session?.userId || (memoryStore.users[0]?.id || 'usr_cypher_01');
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Authentication required.' });
+      }
       let userInventory = [];
 
       if (isDBConnected()) {
@@ -122,7 +125,10 @@ export const shopController = {
 
   buyItem: async (req, res) => {
     try {
-      const userId = req.session?.userId || (memoryStore.users[0]?.id || 'usr_cypher_01');
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Authentication required.' });
+      }
       const { id } = req.params;
       const itemId = id || req.body.itemId;
 
@@ -200,7 +206,10 @@ export const shopController = {
 
   equipItem: async (req, res) => {
     try {
-      const userId = req.session?.userId || (memoryStore.users[0]?.id || 'usr_cypher_01');
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Authentication required.' });
+      }
       const { id } = req.params;
       const itemId = id || req.body.itemId;
 

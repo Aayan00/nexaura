@@ -1,11 +1,10 @@
 export function requireAuth(req, res, next) {
-  if (req.session && req.session.userId) {
-    return next();
-  }
+  const user = req.session?.user;
+  const userId = user?.id || req.session?.userId;
 
-  // Development / Demo fallback if session is active
-  if (req.session && req.session.user) {
-    req.session.userId = req.session.user.id;
+  if (userId) {
+    if (!req.session.userId) req.session.userId = userId;
+    if (!req.session.user) req.session.user = { id: userId };
     return next();
   }
 

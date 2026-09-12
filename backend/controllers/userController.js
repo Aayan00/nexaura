@@ -3,28 +3,39 @@ import { isDBConnected, query, memoryStore } from '../db.js';
 export const userController = {
   getProfile: async (req, res) => {
     try {
-      const userId = req.session?.userId || (memoryStore.users[0]?.id || 'usr_cypher_01');
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized: Session required.' });
+      }
+
       let user = null;
       let stats = null;
 
       if (isDBConnected()) {
-        const users = await query('SELECT id, username, email, created_at FROM users WHERE id = ?', [userId]);
+        const users = await query('SELECT id, username, email, is_demo, created_at FROM users WHERE id = ?', [userId]);
         if (users && users.length > 0) user = users[0];
         const userStats = await query('SELECT * FROM user_stats WHERE user_id = ?', [userId]);
         if (userStats && userStats.length > 0) stats = userStats[0];
       } else {
-        user = memoryStore.users.find((u) => u.id === userId) || memoryStore.users[0];
-        stats = memoryStore.user_stats.find((s) => s.user_id === userId) || memoryStore.user_stats[0];
+        user = memoryStore.users.find((u) => u.id === userId);
+        if (user) {
+          stats = memoryStore.user_stats.find((s) => s.user_id === userId);
+        }
+      }
+
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User profile not found.' });
       }
 
       const level = stats?.level || 1;
       return res.json({
         success: true,
         user: {
-          id: user?.id || userId,
-          username: user?.username || 'V_CYPHER',
-          email: user?.email || 'cypher@nexaura.exe',
-          characterClass: stats?.character_class || 'Netrunner Prime',
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          is_demo: Boolean(user.is_demo),
+          characterClass: stats?.character_class || 'Neural Operative',
           level,
           currentXP: stats?.xp || 0,
           maxXP: level * 1000,
@@ -54,7 +65,10 @@ export const userController = {
 
   updateProfile: async (req, res) => {
     try {
-      const userId = req.session?.userId || (memoryStore.users[0]?.id || 'usr_cypher_01');
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized: Session required.' });
+      }
       const { theme, characterClass, title } = req.body;
 
       if (isDBConnected()) {
@@ -63,7 +77,7 @@ export const userController = {
           [theme, characterClass, title, userId]
         );
       } else {
-        const stats = memoryStore.user_stats.find((s) => s.user_id === userId) || memoryStore.user_stats[0];
+        const stats = memoryStore.user_stats.find((s) => s.user_id === userId);
         if (stats) {
           if (theme) stats.theme = theme;
           if (characterClass) stats.character_class = characterClass;
@@ -80,7 +94,10 @@ export const userController = {
 
   allocateStat: async (req, res) => {
     try {
-      const userId = req.session?.userId || (memoryStore.users[0]?.id || 'usr_cypher_01');
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized: Session required.' });
+      }
       const { stat, amount = 1 } = req.body;
 
       const validStats = ['intelligence', 'strength', 'dexterity', 'vitality', 'discipline'];
@@ -93,7 +110,7 @@ export const userController = {
         const userStats = await query('SELECT * FROM user_stats WHERE user_id = ?', [userId]);
         if (userStats && userStats.length > 0) stats = userStats[0];
       } else {
-        stats = memoryStore.user_stats.find((s) => s.user_id === userId) || memoryStore.user_stats[0];
+        stats = memoryStore.user_stats.find((s) => s.user_id === userId);
       }
 
       if (!stats || (stats.unassigned_points || 0) < amount) {

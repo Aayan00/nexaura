@@ -1,0 +1,48 @@
+# Render Blueprint Specification for Nexaura.exe
+# https://render.com/docs/blueprint-spec
+
+services:
+  # --------------------------------------------------
+  # 1. Backend Service (Node.js + Express API daemon)
+  # --------------------------------------------------
+  - type: web
+    name: nexaura-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: oregon
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: NODE_ENV
+        value: production
+      - key: DB_PORT
+        value: "3306"
+      - key: DB_HOST
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        value: nexaura_exe
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: CLIENT_URL
+        sync: false
+
+  # --------------------------------------------------
+  # 2. Frontend Service (React + Vite + Nginx)
+  # --------------------------------------------------
+  - type: web
+    name: nexaura-frontend
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: free
+    region: oregon
+    envVars:
+      - key: VITE_API_URL
+        sync: false

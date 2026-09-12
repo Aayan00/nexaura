@@ -12,6 +12,7 @@ import {
   Flame,
 } from 'lucide-react'
 import { FocusMode3D } from '../components/3d/FocusMode3D'
+import { NeuralVisionLab } from '../components/focus/NeuralVisionLab'
 import { GlassPanel } from '../components/GlassPanel'
 import { NeonButton } from '../components/NeonButton'
 import { useRPG } from '../context/RPGContext'
@@ -254,6 +255,9 @@ export const FocusModePage: React.FC = () => {
           </GlassPanel>
         </div>
       </div>
+
+      {/* Section 07: Neural Vision Lab — Ambiguous Rotation Experiment */}
+      <NeuralVisionLab />
     </div>
   )
 }

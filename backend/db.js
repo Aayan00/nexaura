@@ -12,6 +12,9 @@ const DB_CONFIG = {
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
+  connectTimeout: 10000,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0,
 };
 
 let pool = null;
@@ -231,19 +234,34 @@ export const memoryStore = {
 
 export async function initDB() {
   try {
-    // 1. Attempt server connection
-    const serverConnection = await mysql.createConnection({
-      host: DB_CONFIG.host,
-      port: DB_CONFIG.port,
-      user: DB_CONFIG.user,
-      password: DB_CONFIG.password,
-    });
-
-    await serverConnection.query(`CREATE DATABASE IF NOT EXISTS \`${DB_CONFIG.database}\`;`);
-    await serverConnection.end();
-
-    // 2. Create connection pool to the database
-    pool = mysql.createPool(DB_CONFIG);
+    // 1. Attempt direct connection pool to target database (works for managed/cloud MySQL and existing local DB)
+    let connectedToTarget = false;
+    try {
+      pool = mysql.createPool(DB_CONFIG);
+      await pool.query('SELECT 1 AS alive');
+      connectedToTarget = true;
+    } catch (directErr) {
+      // If error code is ER_BAD_DB_ERROR (1049), attempt server-level creation (local dev)
+      if (directErr.code === 'ER_BAD_DB_ERROR') {
+        try {
+          const serverConnection = await mysql.createConnection({
+            host: DB_CONFIG.host,
+            port: DB_CONFIG.port,
+            user: DB_CONFIG.user,
+            password: DB_CONFIG.password,
+            connectTimeout: 8000,
+          });
+          await serverConnection.query(`CREATE DATABASE IF NOT EXISTS \`${DB_CONFIG.database}\`;`);
+          await serverConnection.end();
+          pool = mysql.createPool(DB_CONFIG);
+          connectedToTarget = true;
+        } catch (serverErr) {
+          throw directErr;
+        }
+      } else {
+        throw directErr;
+      }
+    }
 
     // 3. Create all 8 tables
     await pool.query(`
@@ -252,9 +270,22 @@ export async function initDB() {
         username VARCHAR(50) NOT NULL UNIQUE,
         email VARCHAR(100) NOT NULL UNIQUE,
         password_hash VARCHAR(255) NOT NULL,
+        is_demo BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    try {
+      await pool.query(`ALTER TABLE users ADD COLUMN is_demo BOOLEAN DEFAULT FALSE`);
+    } catch {
+      // Column already exists
+    }
+
+    try {
+      await pool.query(`ALTER TABLE achievements MODIFY id VARCHAR(100)`);
+    } catch {
+      // Column already updated
+    }
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS user_stats (
@@ -377,12 +408,12 @@ export async function initDB() {
 
     isConnected = true;
     connectionError = null;
-    console.log('✅ [Nexaura DB] Connected to MySQL database:', DB_CONFIG.database);
+    console.log(`✅ [Nexaura DB] Connected to MySQL database: ${DB_CONFIG.database} at ${DB_CONFIG.host}:${DB_CONFIG.port} (User: ${DB_CONFIG.user})`);
     return true;
   } catch (err) {
     isConnected = false;
     connectionError = err.message;
-    console.warn('⚠️ [Nexaura DB] MySQL connection unavailable:', err.message);
+    console.warn(`⚠️ [Nexaura DB] MySQL connection unavailable: ${err.message} (Host: ${DB_CONFIG.host}:${DB_CONFIG.port}, Database: ${DB_CONFIG.database})`);
     console.log('⚡ [Nexaura DB] Operating with high-performance in-memory repository store.');
     return false;
   }

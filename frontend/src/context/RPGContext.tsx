@@ -14,7 +14,6 @@ import type {
 import {
   initialUserProfile,
   initialAttributes,
-  initialMissions,
   initialShopItems,
   initialAchievements,
   initialActivityLogs,
@@ -43,6 +42,7 @@ interface RPGContextType {
   focusSessions: FocusSession[]
   toast: ToastMessage | null
   isAuthenticated: boolean
+  isAuthChecking: boolean
   avatarState: AvatarAnimState
   setAvatarState: (state: AvatarAnimState) => void
   completeMission: (missionId: string | number) => void
@@ -52,6 +52,8 @@ interface RPGContextType {
   equipShopItem: (itemId: string) => void
   claimAchievement: (achievementId: string) => void
   addCustomMission: (mission: Omit<Mission, 'id' | 'completed'>) => void
+  claimedVisionRewards: string[]
+  awardVisionReward: (rewardId: string, xp: number, title: string, details: string) => boolean
   deleteMission: (missionId: string | number) => void
   completeFocusSession: (durationMinutes: number, taskId?: string | number, notes?: string) => void
   setPerformanceMode: (mode: 'ultra' | 'balanced' | 'low') => void
@@ -60,138 +62,125 @@ interface RPGContextType {
   toggleSound: () => void
   showToast: (toast: Omit<ToastMessage, 'id'>) => void
   dismissToast: () => void
-  login: (username: string) => void
+  login: (usernameOrEmail: string, password?: string) => Promise<boolean>
   signup: (username: string, operativeClass: string, favoredStat: AttributeType) => void
-  logout: () => void
+  logout: () => Promise<void>
+  loadUserData: () => Promise<void>
 }
 
 const RPGContext = createContext<RPGContextType | undefined>(undefined)
 
-const STORAGE_KEY = 'nexaura_rpg_state_v2'
-
 export const RPGProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY + '_auth')
-    return saved !== null ? JSON.parse(saved) : true
-  })
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true)
 
-  const [user, setUser] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY + '_user')
-    return saved
-      ? { ...initialUserProfile, ...JSON.parse(saved) }
-      : { ...initialUserProfile, performanceMode: 'ultra', environment: 'city' }
-  })
+  const [user, setUser] = useState<UserProfile>(() => ({
+    ...initialUserProfile,
+    username: '',
+    email: '',
+    performanceMode: 'ultra',
+    environment: 'city',
+  }))
 
-  const [attributes, setAttributes] = useState<AttributeData[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY + '_attrs')
-    return saved ? JSON.parse(saved) : initialAttributes
-  })
-
-  const [missions, setMissions] = useState<Mission[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY + '_missions')
-    return saved ? JSON.parse(saved) : initialMissions
-  })
-
-  const [shopItems, setShopItems] = useState<ShopItem[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY + '_shop')
-    return saved ? JSON.parse(saved) : initialShopItems
-  })
-
-  const [achievements, setAchievements] = useState<Achievement[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY + '_achievements')
-    return saved ? JSON.parse(saved) : initialAchievements
-  })
-
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY + '_logs')
-    return saved ? JSON.parse(saved) : initialActivityLogs
-  })
-
-  const [focusSessions, setFocusSessions] = useState<FocusSession[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY + '_focus')
-    return saved
-      ? JSON.parse(saved)
-      : [
-          {
-            id: 1,
-            duration_minutes: 25,
-            session_type: 'pomodoro',
-            xp_earned: 50,
-            completed: 1,
-            created_at: new Date(Date.now() - 3600000).toISOString(),
-          },
-        ]
-  })
+  const [attributes, setAttributes] = useState<AttributeData[]>(initialAttributes)
+  const [missions, setMissions] = useState<Mission[]>([])
+  const [shopItems, setShopItems] = useState<ShopItem[]>(initialShopItems)
+  const [achievements, setAchievements] = useState<Achievement[]>(initialAchievements)
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(initialActivityLogs)
+  const [focusSessions, setFocusSessions] = useState<FocusSession[]>([])
+  const [claimedVisionRewards, setClaimedVisionRewards] = useState<string[]>([])
 
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const [avatarState, setAvatarState] = useState<AvatarAnimState>('idle')
 
-  // Sync state to local storage
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY + '_auth', JSON.stringify(isAuthenticated))
-    localStorage.setItem(STORAGE_KEY + '_user', JSON.stringify(user))
-    localStorage.setItem(STORAGE_KEY + '_attrs', JSON.stringify(attributes))
-    localStorage.setItem(STORAGE_KEY + '_missions', JSON.stringify(missions))
-    localStorage.setItem(STORAGE_KEY + '_shop', JSON.stringify(shopItems))
-    localStorage.setItem(STORAGE_KEY + '_achievements', JSON.stringify(achievements))
-    localStorage.setItem(STORAGE_KEY + '_logs', JSON.stringify(activityLogs))
-    localStorage.setItem(STORAGE_KEY + '_focus', JSON.stringify(focusSessions))
-  }, [isAuthenticated, user, attributes, missions, shopItems, achievements, activityLogs, focusSessions])
+  const loadUserData = useCallback(async () => {
+    try {
+      const [taskRes, itemRes, achRes, focusRes, profileRes] = await Promise.allSettled([
+        api.tasks.getAll(),
+        api.shop.getItems(),
+        api.achievements.getAll(),
+        api.focus.getHistory(),
+        api.user.getProfile(),
+      ])
 
-  // Fetch initial data from backend if available
+      if (profileRes.status === 'fulfilled' && profileRes.value.success && profileRes.value.user) {
+        setUser((prev) => ({
+          ...prev,
+          ...profileRes.value.user,
+        }))
+        const p = profileRes.value.user as any
+        if (p.attributes) {
+          setAttributes(p.attributes)
+        }
+      }
+
+      if (taskRes.status === 'fulfilled' && taskRes.value.success && taskRes.value.tasks) {
+        const mappedMissions: Mission[] = taskRes.value.tasks.map((t) => ({
+          id: t.id,
+          title: t.title,
+          description: t.description || '',
+          attribute: (t.stat_type || 'DIS') as AttributeType,
+          rank: (t.difficulty === 'epic' ? 'S' : t.difficulty === 'hard' ? 'A' : t.difficulty === 'medium' ? 'B' : 'D'),
+          category: (t.category as any) || 'Personal',
+          priority: (t.priority as any) || 'medium',
+          status: t.status as any,
+          xpReward: t.xp_reward || 100,
+          creditReward: t.credit_reward || 50,
+          statPoints: 1,
+          completed: t.status === 'completed',
+          isBoss: t.is_boss === 1 || t.is_boss === true,
+          subtasks: t.subtasks?.map((s) => ({
+            id: s.id,
+            task_id: t.id,
+            title: s.title,
+            completed: s.completed,
+          })) || [],
+        }))
+        setMissions(mappedMissions)
+      } else {
+        setMissions([])
+      }
+
+      if (itemRes.status === 'fulfilled' && itemRes.value.success && itemRes.value.items) {
+        setShopItems(itemRes.value.items as any)
+      }
+
+      if (achRes.status === 'fulfilled' && achRes.value.success && achRes.value.achievements) {
+        setAchievements(achRes.value.achievements as any)
+      }
+
+      if (focusRes.status === 'fulfilled' && focusRes.value.success && focusRes.value.sessions) {
+        setFocusSessions(focusRes.value.sessions as any)
+      }
+    } catch (e) {
+      console.warn('[Nexaura] User data sync error:', e)
+    }
+  }, [])
+
+  // Check authentication status on startup via GET /api/auth/me
   useEffect(() => {
-    async function loadBackendData() {
+    let isMounted = true
+    async function checkAuth() {
       try {
-        const [taskRes, itemRes, achRes, focusRes] = await Promise.allSettled([
-          api.tasks.getAll(),
-          api.shop.getItems(),
-          api.achievements.getAll(),
-          api.focus.getHistory(),
-        ])
-
-        if (taskRes.status === 'fulfilled' && taskRes.value.success && taskRes.value.tasks?.length > 0) {
-          // Map backend tasks to Mission format
-          const mappedMissions: Mission[] = taskRes.value.tasks.map((t) => ({
-            id: t.id,
-            title: t.title,
-            description: t.description || '',
-            attribute: (t.stat_type || 'DIS') as AttributeType,
-            rank: (t.difficulty === 'epic' ? 'S' : t.difficulty === 'hard' ? 'A' : t.difficulty === 'medium' ? 'B' : 'D'),
-            category: (t.category as any) || 'Personal',
-            priority: (t.priority as any) || 'medium',
-            status: t.status as any,
-            xpReward: t.xp_reward || 100,
-            creditReward: t.credit_reward || 50,
-            statPoints: 1,
-            completed: t.status === 'completed',
-            isBoss: t.is_boss === 1 || t.is_boss === true,
-            subtasks: t.subtasks?.map((s) => ({
-              id: s.id,
-              task_id: t.id,
-              title: s.title,
-              completed: s.completed,
-            })) || [],
-          }))
-          setMissions(mappedMissions)
+        const res = await api.auth.getMe()
+        if (isMounted && res.success && res.user) {
+          setIsAuthenticated(true)
+          setUser((prev) => ({ ...prev, ...res.user }))
+          await loadUserData()
+        } else {
+          if (isMounted) setIsAuthenticated(false)
         }
-
-        if (itemRes.status === 'fulfilled' && itemRes.value.success && itemRes.value.items?.length > 0) {
-          setShopItems(itemRes.value.items as any)
-        }
-
-        if (achRes.status === 'fulfilled' && achRes.value.success && achRes.value.achievements?.length > 0) {
-          setAchievements(achRes.value.achievements as any)
-        }
-
-        if (focusRes.status === 'fulfilled' && focusRes.value.success && focusRes.value.sessions) {
-          setFocusSessions(focusRes.value.sessions)
-        }
-      } catch (e) {
-        console.warn('Backend sync fallback to local storage:', e)
+      } catch {
+        if (isMounted) setIsAuthenticated(false)
+      } finally {
+        if (isMounted) setIsAuthChecking(false)
       }
     }
-    loadBackendData()
-  }, [])
+    checkAuth()
+    return () => {
+      isMounted = false
+    }
+  }, [loadUserData])
 
   const showToast = useCallback((toastData: Omit<ToastMessage, 'id'>) => {
     const id = Date.now().toString()
@@ -461,6 +450,71 @@ export const RPGProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }
 
+  const awardVisionReward = (rewardId: string, xp: number, title: string, details: string): boolean => {
+    if (claimedVisionRewards.includes(rewardId)) return false
+    if (!isAuthenticated || !user.username) return false
+
+    sound.playMissionComplete()
+    setClaimedVisionRewards((prev) => [...prev, rewardId])
+
+    let nextXP = user.currentXP + xp
+    let nextLevel = user.level
+    let nextMaxXP = user.maxXP
+    let newUnassigned = user.unassignedPoints
+    let didLevelUp = false
+
+    if (nextXP >= user.maxXP) {
+      nextXP = nextXP - user.maxXP
+      nextLevel += 1
+      nextMaxXP = Math.floor(user.maxXP * 1.25)
+      newUnassigned += 3
+      didLevelUp = true
+    }
+
+    setUser((prev) => ({
+      ...prev,
+      currentXP: nextXP,
+      level: nextLevel,
+      maxXP: nextMaxXP,
+      unassignedPoints: newUnassigned,
+    }))
+
+    setActivityLogs((prev) => [
+      {
+        id: 'log-' + Date.now(),
+        timestamp: 'JUST NOW',
+        title: title,
+        details: details,
+        type: 'achievement',
+        xpGained: xp,
+      },
+      ...prev.slice(0, 19),
+    ])
+
+    api.focus.complete(Math.max(1, Math.round(xp / 5)), undefined, `Neural Vision Lab: ${title}`).catch(() => {})
+
+    if (didLevelUp) {
+      sound.playLevelUp()
+      triggerConfetti()
+      setAvatarState('levelup')
+      setTimeout(() => setAvatarState('idle'), 4000)
+      showToast({
+        title: `// SYSTEM LEVEL UP: LVL ${nextLevel}`,
+        message: `Neural perception experiment upgraded consciousness! +3 Stat Points awarded.`,
+        type: 'level',
+        xp: xp,
+      })
+    } else {
+      showToast({
+        title: `// REWARD: ${title}`,
+        message: details,
+        type: 'reward',
+        xp: xp,
+      })
+    }
+    return true
+  }
+
   const allocateStatPoint = (code: AttributeType) => {
     if (user.unassignedPoints <= 0) return
 
@@ -721,16 +775,28 @@ export const RPGProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     })
   }
 
-  const login = (username: string) => {
-    sound.playComplete()
-    setUser((prev) => ({ ...prev, username: username.toUpperCase() }))
-    setIsAuthenticated(true)
-    api.auth.login(username).catch(() => {})
-    showToast({
-      title: `// NEURAL LINK ESTABLISHED`,
-      message: `Welcome back, Operative ${username.toUpperCase()}. System Online.`,
-      type: 'success',
-    })
+  const login = async (usernameOrEmail: string, password?: string): Promise<boolean> => {
+    try {
+      const res = await api.auth.login(usernameOrEmail, password)
+      if (res.success) {
+        sound.playComplete()
+        setIsAuthenticated(true)
+        if (res.user) {
+          setUser((prev) => ({ ...prev, ...res.user }))
+        }
+        await loadUserData()
+        showToast({
+          title: `// NEURAL LINK ESTABLISHED`,
+          message: `Welcome back, Operative ${(res.user?.username || usernameOrEmail).toUpperCase()}. System Online.`,
+          type: 'success',
+        })
+        return true
+      }
+      return false
+    } catch (err: any) {
+      sound.playAlert()
+      throw err
+    }
   }
 
   const signup = (username: string, operativeClass: string, favoredStat: AttributeType) => {
@@ -763,10 +829,21 @@ export const RPGProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     })
   }
 
-  const logout = () => {
+  const logout = async () => {
     sound.playAlert()
+    try {
+      await api.auth.logout()
+    } catch (e) {
+      console.warn('Logout error:', e)
+    }
     setIsAuthenticated(false)
-    api.auth.logout().catch(() => {})
+    setUser({
+      ...initialUserProfile,
+      username: '',
+      email: '',
+    })
+    setMissions([])
+    setFocusSessions([])
     showToast({
       title: `// NEURAL LINK SEVERED`,
       message: `Session terminated. Security protocol engaged.`,
@@ -786,6 +863,7 @@ export const RPGProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         focusSessions,
         toast,
         isAuthenticated,
+        isAuthChecking,
         avatarState,
         setAvatarState,
         completeMission,
@@ -797,6 +875,8 @@ export const RPGProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addCustomMission,
         deleteMission,
         completeFocusSession,
+        claimedVisionRewards,
+        awardVisionReward,
         setPerformanceMode,
         setEnvironmentTheme,
         updateUserProfile,
@@ -806,6 +886,7 @@ export const RPGProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         login,
         signup,
         logout,
+        loadUserData,
       }}
     >
       {children}

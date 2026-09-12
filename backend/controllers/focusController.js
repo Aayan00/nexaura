@@ -3,7 +3,10 @@ import { isDBConnected, query, memoryStore } from '../db.js';
 export const focusController = {
   getHistory: async (req, res) => {
     try {
-      const userId = req.session?.userId || (memoryStore.users[0]?.id || 'usr_cypher_01');
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Authentication required.' });
+      }
 
       if (isDBConnected()) {
         const sessions = await query('SELECT * FROM focus_sessions WHERE user_id = ? ORDER BY completed_at DESC', [userId]);
@@ -41,7 +44,10 @@ export const focusController = {
 
   completeSession: async (req, res) => {
     try {
-      const userId = req.session?.userId || (memoryStore.users[0]?.id || 'usr_cypher_01');
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Authentication required.' });
+      }
       const { durationMinutes = 25, taskId = null, notes = '' } = req.body;
 
       const xpGained = Math.round(durationMinutes * 2); // e.g. 25m = 50 XP

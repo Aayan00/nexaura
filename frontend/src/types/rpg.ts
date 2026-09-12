@@ -114,8 +114,10 @@ export interface ActivityLog {
 }
 
 export interface UserProfile {
-  id?: number
+  id?: number | string
   username: string
+  email?: string
+  is_demo?: boolean
   title: string
   level: number
   currentXP: number

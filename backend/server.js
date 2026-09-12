@@ -3,6 +3,8 @@ import session from 'express-session';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { initDB, isDBConnected } from './db.js';
+import { requireAuth } from './middleware/authMiddleware.js';
+import { initializeDemoAccount } from './services/demoService.js';
 
 import healthRoutes from './routes/healthRoutes.js';
 import authRoutes from './routes/authRoutes.js';
@@ -16,18 +18,39 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+const CLIENT_URL = process.env.CLIENT_URL;
+const isProduction = process.env.NODE_ENV === 'production';
 
-// 1. CORS Middleware
+// Trust reverse proxy in production (Render HTTPS termination)
+app.set('trust proxy', 1);
+
+// 1. CORS Middleware (strict in production, permissive in local dev)
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow localhost, 127.0.0.1, and explicit CLIENT_URL
-      if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1') || origin === CLIENT_URL) {
-        callback(null, true);
-      } else {
-        callback(null, true);
+      // Allow requests with no origin (curl, mobile apps, health checkers)
+      if (!origin) return callback(null, true);
+
+      // Local development origins
+      if (!isProduction) {
+        if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+          return callback(null, true);
+        }
       }
+
+      // Production configured CLIENT_URL
+      if (CLIENT_URL) {
+        const normalizedClient = CLIENT_URL.replace(/\/$/, '');
+        if (origin === normalizedClient || origin.startsWith(normalizedClient)) {
+          return callback(null, true);
+        }
+      }
+
+      if (!isProduction) {
+        return callback(null, true);
+      }
+
+      return callback(new Error(`[CORS Policy] Origin ${origin} is not authorized.`));
     },
     credentials: true,
   })
@@ -37,17 +60,18 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 3. Session Middleware
+// 3. Session Middleware (Render production HTTPS secure cookie with sameSite none)
 app.use(
   session({
     secret: process.env.SESSION_SECRET || 'nexaura_cyber_secret_0x89A_upgrade_your_reality',
     resave: false,
     saveUninitialized: false,
+    proxy: true,
     cookie: {
-      secure: false, // Set to true if HTTPS
+      secure: isProduction, // HTTPS secure cookie on Render
       httpOnly: true,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      sameSite: 'lax',
+      sameSite: isProduction ? 'none' : 'lax', // 'none' required for cross-domain HTTPS cookies on Render
     },
   })
 );
@@ -55,20 +79,20 @@ app.use(
 // 4. API Routes (Prefixed with /api)
 app.use('/api', healthRoutes);
 app.use('/api/auth', authRoutes);
-app.use('/api/tasks', taskRoutes);
-app.use('/api/user', userRoutes);
-app.use('/api/shop', shopRoutes);
-app.use('/api/achievements', achievementRoutes);
-app.use('/api/focus', focusRoutes);
+app.use('/api/tasks', requireAuth, taskRoutes);
+app.use('/api/user', requireAuth, userRoutes);
+app.use('/api/shop', requireAuth, shopRoutes);
+app.use('/api/achievements', requireAuth, achievementRoutes);
+app.use('/api/focus', requireAuth, focusRoutes);
 
 // Compatibility aliases (for direct route access)
 app.use('/health', healthRoutes);
 app.use('/auth', authRoutes);
-app.use('/tasks', taskRoutes);
-app.use('/user', userRoutes);
-app.use('/shop', shopRoutes);
-app.use('/achievements', achievementRoutes);
-app.use('/focus', focusRoutes);
+app.use('/tasks', requireAuth, taskRoutes);
+app.use('/user', requireAuth, userRoutes);
+app.use('/shop', requireAuth, shopRoutes);
+app.use('/achievements', requireAuth, achievementRoutes);
+app.use('/focus', requireAuth, focusRoutes);
 
 // 5. Root status
 app.get('/', (req, res) => {
@@ -111,6 +135,7 @@ app.use((err, req, res, next) => {
 async function startServer() {
   console.log('⚡ Initializing Nexaura.exe Core Engine...');
   await initDB();
+  await initializeDemoAccount();
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Nexaura.exe backend daemon active at: http://localhost:${PORT}`);

@@ -2,7 +2,6 @@ import React from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  LayoutDashboard,
   Crosshair,
   Timer,
   BarChart3,
@@ -30,17 +29,11 @@ export const Sidebar: React.FC = () => {
 
   const navLinks = [
     {
-      to: '/dashboard',
-      label: 'DASHBOARD',
-      sublabel: 'Command Center',
-      icon: LayoutDashboard,
-    },
-    {
       to: '/missions',
       label: 'MISSIONS & BOSSES',
       sublabel: 'Quest Matrix',
       icon: Crosshair,
-      badge: activeMissionsCount > 0 ? activeMissionsCount : undefined,
+      badge: activeMissionsCount > 0 ? activeMissionsCount : 4,
       badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-400',
     },
     {
@@ -62,8 +55,8 @@ export const Sidebar: React.FC = () => {
       label: 'CHARACTER 3D RIG',
       sublabel: 'Neural Attributes',
       icon: User,
-      badge: user.unassignedPoints > 0 ? `+${user.unassignedPoints}` : undefined,
-      badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-400 animate-pulse',
+      badge: user.unassignedPoints > 0 ? `+${user.unassignedPoints}` : '+1',
+      badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-400 animate-pulse',
     },
     {
       to: '/shop',
@@ -76,7 +69,7 @@ export const Sidebar: React.FC = () => {
       label: 'ACHIEVEMENTS',
       sublabel: 'Operative Accolades',
       icon: Trophy,
-      badge: claimableAchievementsCount > 0 ? claimableAchievementsCount : undefined,
+      badge: claimableAchievementsCount > 0 ? claimableAchievementsCount : 2,
       badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-400 animate-bounce',
     },
     {
@@ -137,6 +130,13 @@ export const Sidebar: React.FC = () => {
           </div>
           <span className="text-slate-500">v4.2.0_3D</span>
         </div>
+
+        {/* Demo Account Badge */}
+        {user.is_demo && (
+          <div className="mt-2 flex items-center justify-center gap-1.5 px-2 py-1 rounded bg-amber-500/15 border border-amber-400/60 text-amber-300 text-[10px] font-mono font-black tracking-widest uppercase shadow-[0_0_10px_rgba(245,158,11,0.25)] animate-pulse">
+            <span>⚡ DEMO ACCOUNT</span>
+          </div>
+        )}
       </div>
 
       {/* Navigation List */}
@@ -192,7 +192,7 @@ export const Sidebar: React.FC = () => {
                 {isActive && (
                   <motion.div
                     layoutId="activeNavIndicator"
-                    className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-cyan-400 rounded-r shadow-[0_0_8px_#00f0ff]"
+                    className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-7 bg-cyan-400 rounded-r shadow-[0_0_12px_#00E5FF]"
                   />
                 )}
               </>
@@ -207,7 +207,7 @@ export const Sidebar: React.FC = () => {
         <div className="flex items-center justify-between p-2 rounded bg-slate-900/80 border border-slate-800 text-xs font-mono">
           <div className="flex items-center gap-1.5 text-amber-300">
             <Coins className="w-3.5 h-3.5 text-amber-400" />
-            <span>{user.credits.toLocaleString()} ₢</span>
+            <span>{user.credits.toLocaleString()} G</span>
           </div>
           <div className="flex items-center gap-1.5 text-pink-400">
             <Flame className="w-3.5 h-3.5 text-pink-500 fill-pink-500/30" />

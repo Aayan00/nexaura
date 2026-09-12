@@ -29,11 +29,17 @@ function getCategoryAttribute(category) {
 export const taskController = {
   getTasks: async (req, res) => {
     try {
-      const userId = req.session?.userId || (memoryStore.users[0]?.id || 'usr_cypher_01');
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized: Session required.' });
+      }
 
       if (isDBConnected()) {
         const tasks = await query('SELECT * FROM tasks WHERE user_id = ? ORDER BY created_at DESC', [userId]);
-        const subtasks = await query('SELECT * FROM subtasks');
+        const taskIds = tasks.map((t) => t.id);
+        const subtasks = taskIds.length > 0
+          ? await query(`SELECT * FROM subtasks WHERE task_id IN (${taskIds.map(() => '?').join(',')})`, taskIds)
+          : [];
 
         const tasksWithSubtasks = tasks.map((t) => ({
           id: t.id,
@@ -56,7 +62,7 @@ export const taskController = {
           completed: t.status === 'completed',
           completedAt: t.completed_at,
           createdAt: t.created_at,
-          subtasks: subtasks
+          subtasks: (subtasks || [])
             .filter((s) => s.task_id === t.id)
             .map((s) => ({
               id: s.id,
@@ -67,7 +73,7 @@ export const taskController = {
 
         return res.json({ success: true, tasks: tasksWithSubtasks });
       } else {
-        const userTasks = memoryStore.tasks.filter((t) => t.user_id === userId || true);
+        const userTasks = memoryStore.tasks.filter((t) => t.user_id === userId);
         const tasksWithSubtasks = userTasks.map((t) => ({
           ...t,
           dueDate: t.due_date,
@@ -101,7 +107,10 @@ export const taskController = {
 
   createTask: async (req, res) => {
     try {
-      const userId = req.session?.userId || (memoryStore.users[0]?.id || 'usr_cypher_01');
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized: Session required.' });
+      }
       const {
         title,
         description = '',
@@ -240,6 +249,10 @@ export const taskController = {
 
   updateTask: async (req, res) => {
     try {
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized: Session required.' });
+      }
       const { id } = req.params;
       const { title, description, category, difficulty, priority, status } = req.body;
 
@@ -247,11 +260,11 @@ export const taskController = {
         await query(
           `UPDATE tasks SET title = COALESCE(?, title), description = COALESCE(?, description),
            category = COALESCE(?, category), difficulty = COALESCE(?, difficulty),
-           priority = COALESCE(?, priority), status = COALESCE(?, status) WHERE id = ?`,
-          [title, description, category, difficulty, priority, status, id]
+           priority = COALESCE(?, priority), status = COALESCE(?, status) WHERE id = ? AND user_id = ?`,
+          [title, description, category, difficulty, priority, status, id, userId]
         );
       } else {
-        const task = memoryStore.tasks.find((t) => t.id === id);
+        const task = memoryStore.tasks.find((t) => t.id === id && t.user_id === userId);
         if (task) {
           if (title) task.title = title;
           if (description !== undefined) task.description = description;
@@ -271,12 +284,16 @@ export const taskController = {
 
   deleteTask: async (req, res) => {
     try {
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized: Session required.' });
+      }
       const { id } = req.params;
 
       if (isDBConnected()) {
-        await query('DELETE FROM tasks WHERE id = ?', [id]);
+        await query('DELETE FROM tasks WHERE id = ? AND user_id = ?', [id, userId]);
       } else {
-        memoryStore.tasks = memoryStore.tasks.filter((t) => t.id !== id);
+        memoryStore.tasks = memoryStore.tasks.filter((t) => !(t.id === id && t.user_id === userId));
         memoryStore.subtasks = memoryStore.subtasks.filter((s) => s.task_id !== id);
       }
 
@@ -289,11 +306,15 @@ export const taskController = {
 
   startTask: async (req, res) => {
     try {
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized: Session required.' });
+      }
       const { id } = req.params;
       if (isDBConnected()) {
-        await query("UPDATE tasks SET status = 'in_progress' WHERE id = ?", [id]);
+        await query("UPDATE tasks SET status = 'in_progress' WHERE id = ? AND user_id = ?", [id, userId]);
       } else {
-        const task = memoryStore.tasks.find((t) => t.id === id);
+        const task = memoryStore.tasks.find((t) => t.id === id && t.user_id === userId);
         if (task) task.status = 'in_progress';
       }
       return res.json({ success: true, message: 'Mission directive engaged: IN PROGRESS' });
@@ -304,11 +325,15 @@ export const taskController = {
 
   pauseTask: async (req, res) => {
     try {
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized: Session required.' });
+      }
       const { id } = req.params;
       if (isDBConnected()) {
-        await query("UPDATE tasks SET status = 'paused' WHERE id = ?", [id]);
+        await query("UPDATE tasks SET status = 'paused' WHERE id = ? AND user_id = ?", [id, userId]);
       } else {
-        const task = memoryStore.tasks.find((t) => t.id === id);
+        const task = memoryStore.tasks.find((t) => t.id === id && t.user_id === userId);
         if (task) task.status = 'paused';
       }
       return res.json({ success: true, message: 'Mission directive suspended: PAUSED' });
@@ -319,11 +344,15 @@ export const taskController = {
 
   failTask: async (req, res) => {
     try {
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized: Session required.' });
+      }
       const { id } = req.params;
       if (isDBConnected()) {
-        await query("UPDATE tasks SET status = 'failed' WHERE id = ?", [id]);
+        await query("UPDATE tasks SET status = 'failed' WHERE id = ? AND user_id = ?", [id, userId]);
       } else {
-        const task = memoryStore.tasks.find((t) => t.id === id);
+        const task = memoryStore.tasks.find((t) => t.id === id && t.user_id === userId);
         if (task) task.status = 'failed';
       }
       return res.json({ success: true, message: 'Mission directive marked: FAILED' });
@@ -335,13 +364,16 @@ export const taskController = {
   completeTask: async (req, res) => {
     try {
       const { id } = req.params;
-      const userId = req.session?.userId || (memoryStore.users[0]?.id || 'usr_cypher_01');
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized: Session required.' });
+      }
 
       let task = null;
       let stats = null;
 
       if (isDBConnected()) {
-        const tasks = await query('SELECT * FROM tasks WHERE id = ?', [id]);
+        const tasks = await query('SELECT * FROM tasks WHERE id = ? AND user_id = ?', [id, userId]);
         if (!tasks || tasks.length === 0) {
           return res.status(404).json({ success: false, message: 'Mission directive not found.' });
         }
@@ -354,7 +386,7 @@ export const taskController = {
         const userStats = await query('SELECT * FROM user_stats WHERE user_id = ?', [userId]);
         stats = userStats && userStats.length > 0 ? userStats[0] : null;
       } else {
-        task = memoryStore.tasks.find((t) => t.id === id);
+        task = memoryStore.tasks.find((t) => t.id === id && t.user_id === userId);
         if (!task) return res.status(404).json({ success: false, message: 'Mission directive not found.' });
         if (task.status === 'completed') {
           return res.status(400).json({ success: false, message: 'Directive already fulfilled. Double rewards prevented.' });
@@ -442,29 +474,38 @@ export const taskController = {
 
   toggleSubtask: async (req, res) => {
     try {
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized: Session required.' });
+      }
       const { id, subtaskId } = req.params;
       let subCompleted = false;
 
       if (isDBConnected()) {
-        const sub = await query('SELECT * FROM subtasks WHERE id = ?', [subtaskId]);
+        const tasks = await query('SELECT * FROM tasks WHERE id = ? AND user_id = ?', [id, userId]);
+        if (!tasks || tasks.length === 0) {
+          return res.status(404).json({ success: false, message: 'Mission directive not found.' });
+        }
+
+        const sub = await query('SELECT * FROM subtasks WHERE id = ? AND task_id = ?', [subtaskId, id]);
         if (sub && sub.length > 0) {
           subCompleted = !sub[0].completed;
           await query('UPDATE subtasks SET completed = ? WHERE id = ?', [subCompleted, subtaskId]);
         }
         // If boss mission, damage boss HP
-        const tasks = await query('SELECT * FROM tasks WHERE id = ?', [id]);
-        if (tasks && tasks.length > 0 && tasks[0].is_boss) {
+        if (tasks[0].is_boss) {
           const dmg = subCompleted ? 50 : -50;
           const newHp = Math.max(0, tasks[0].boss_current_hp - dmg);
           await query('UPDATE tasks SET boss_current_hp = ? WHERE id = ?', [newHp, id]);
         }
       } else {
-        const sub = memoryStore.subtasks.find((s) => s.id === subtaskId);
+        const task = memoryStore.tasks.find((t) => t.id === id && t.user_id === userId);
+        if (!task) return res.status(404).json({ success: false, message: 'Mission directive not found.' });
+        const sub = memoryStore.subtasks.find((s) => s.id === subtaskId && s.task_id === id);
         if (sub) {
           sub.completed = !sub.completed;
           subCompleted = sub.completed;
         }
-        const task = memoryStore.tasks.find((t) => t.id === id);
         if (task && task.is_boss) {
           const dmg = subCompleted ? 50 : -50;
           task.boss_current_hp = Math.max(0, (task.boss_current_hp || 100) - dmg);

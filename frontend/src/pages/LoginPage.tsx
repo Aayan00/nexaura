@@ -1,35 +1,62 @@
-import React, { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Terminal, Shield, Lock, ArrowRight, UserCheck, Cpu } from 'lucide-react'
+import { Terminal, Shield, Lock, ArrowRight, Cpu, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { GlassPanel } from '../components/GlassPanel'
 import { NeonButton } from '../components/NeonButton'
 import { useRPG } from '../context/RPGContext'
 
 export const LoginPage: React.FC = () => {
-  const { login } = useRPG()
+  const { login, isAuthenticated } = useRPG()
   const navigate = useNavigate()
-  const [username, setUsername] = useState('KAIRO_NET')
-  const [passkey, setPasskey] = useState('••••••••••••')
+  const location = useLocation()
+
+  // Pre-fill username if redirected from registration
+  const registrationMessage = (location.state as any)?.message as string | undefined
+  const prefilledUsername = (location.state as any)?.username as string | undefined
+
+  const [usernameOrEmail, setUsernameOrEmail] = useState(prefilledUsername || '')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(registrationMessage || null)
   const [isLoading, setIsLoading] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      const destination = (location.state as any)?.from?.pathname || '/dashboard'
+      navigate(destination, { replace: true })
+    }
+  }, [isAuthenticated, navigate, location])
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!username.trim()) return
+    setError(null)
+    setSuccessMessage(null)
+
+    if (!usernameOrEmail.trim()) {
+      setError('Operative callsign or email is required.')
+      return
+    }
+    if (!password) {
+      setError('Cybernetic passkey is required.')
+      return
+    }
 
     setIsLoading(true)
-    setTimeout(() => {
-      login(username)
-      navigate('/dashboard')
-    }, 600)
-  }
-
-  const handleQuickDemo = () => {
-    setIsLoading(true)
-    setTimeout(() => {
-      login('V_CYPHER')
-      navigate('/dashboard')
-    }, 400)
+    try {
+      const ok = await login(usernameOrEmail.trim(), password)
+      if (ok) {
+        const destination = (location.state as any)?.from?.pathname || '/dashboard'
+        navigate(destination, { replace: true })
+      } else {
+        setError('Invalid credentials')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Invalid credentials')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -60,15 +87,39 @@ export const LoginPage: React.FC = () => {
             </p>
             <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded bg-[#0b1428] border border-cyan-500/30 text-[11px] font-mono text-cyan-300">
               <Terminal className="w-3.5 h-3.5 text-cyan-400" />
-              <span>// NEURAL_AUTH_GATEWAY: 0x89</span>
+              <span>// NEURAL_AUTH_GATEWAY</span>
             </div>
           </div>
+
+          {/* Registration Success Banner */}
+          {successMessage && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-5 p-3 rounded bg-emerald-950/40 border border-emerald-500/60 text-emerald-300 text-xs font-mono flex items-start gap-2 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              <span>{successMessage}</span>
+            </motion.div>
+          )}
+
+          {/* Error Message Alert */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-5 p-3 rounded bg-red-950/40 border border-red-500/60 text-red-300 text-xs font-mono flex items-start gap-2 shadow-[0_0_15px_rgba(239,68,68,0.2)]"
+            >
+              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </motion.div>
+          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-mono text-slate-400 uppercase tracking-wider mb-1.5">
-                OPERATIVE CALLSIGN
+                OPERATIVE CALLSIGN OR EMAIL
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
@@ -76,10 +127,15 @@ export const LoginPage: React.FC = () => {
                 </div>
                 <input
                   type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="ENTER CALLSIGN..."
-                  className="w-full pl-9 pr-4 py-2.5 bg-[#080e1c] border border-cyan-500/30 rounded text-sm font-mono text-cyan-200 placeholder-slate-600 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all uppercase"
+                  required
+                  value={usernameOrEmail}
+                  onChange={(e) => {
+                    setUsernameOrEmail(e.target.value)
+                    setError(null)
+                  }}
+                  disabled={isLoading}
+                  placeholder="ENTER CALLSIGN OR EMAIL..."
+                  className="w-full pl-9 pr-4 py-2.5 bg-[#080e1c] border border-cyan-500/30 rounded text-sm font-mono text-cyan-200 placeholder-slate-600 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all disabled:opacity-50"
                 />
               </div>
             </div>
@@ -94,36 +150,31 @@ export const LoginPage: React.FC = () => {
                 </div>
                 <input
                   type="password"
-                  value={passkey}
-                  onChange={(e) => setPasskey(e.target.value)}
+                  required
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value)
+                    setError(null)
+                  }}
+                  disabled={isLoading}
                   placeholder="••••••••••••"
-                  className="w-full pl-9 pr-4 py-2.5 bg-[#080e1c] border border-cyan-500/30 rounded text-sm font-mono text-cyan-200 placeholder-slate-600 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all"
+                  className="w-full pl-9 pr-4 py-2.5 bg-[#080e1c] border border-cyan-500/30 rounded text-sm font-mono text-cyan-200 placeholder-slate-600 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all disabled:opacity-50"
                 />
               </div>
             </div>
 
             {/* Submit Button */}
-            <div className="pt-2 space-y-2.5">
+            <div className="pt-3">
               <NeonButton
                 type="submit"
                 variant="cyan"
                 size="md"
                 isLoading={isLoading}
+                disabled={isLoading}
                 rightIcon={<ArrowRight className="w-4 h-4" />}
-                className="w-full"
+                className="w-full font-bold uppercase tracking-wider"
               >
-                INITIALIZE SYNC
-              </NeonButton>
-
-              <NeonButton
-                type="button"
-                variant="purple"
-                size="sm"
-                onClick={handleQuickDemo}
-                leftIcon={<UserCheck className="w-4 h-4" />}
-                className="w-full"
-              >
-                QUICK DEMO ACCESS (V_CYPHER)
+                {isLoading ? 'VERIFYING CIPHER...' : 'INITIALIZE SYNC'}
               </NeonButton>
             </div>
           </form>
@@ -132,7 +183,7 @@ export const LoginPage: React.FC = () => {
           <div className="mt-6 pt-4 border-t border-slate-800 text-center text-xs font-mono text-slate-400">
             <span>UNREGISTERED OPERATIVE? </span>
             <Link
-              to="/signup"
+              to="/register"
               className="text-cyan-400 hover:text-cyan-300 font-bold underline underline-offset-4 ml-1"
             >
               ENROLL IN SYSTEM &gt;
@@ -143,3 +194,5 @@ export const LoginPage: React.FC = () => {
     </div>
   )
 }
+
+export default LoginPage

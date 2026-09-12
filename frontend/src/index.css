@@ -7,19 +7,37 @@
   --font-mono: 'JetBrains Mono', monospace;
   --font-sans: 'Inter', sans-serif;
 
-  --color-neon-cyan: #00f0ff;
-  --color-neon-magenta: #ff007f;
-  --color-neon-purple: #a855f7;
+  --color-neon-cyan: #00E5FF;
+  --color-neon-blue: #159DFF;
+  --color-neon-purple: #8B5CF6;
+  --color-neon-magenta: #FF2BA6;
+  --color-neon-pink: #FF4DB8;
   --color-neon-amber: #facc15;
   --color-neon-green: #10b981;
   --color-neon-red: #ef4444;
 
-  --color-cyber-void: #050811;
-  --color-cyber-navy: #0a0e1a;
-  --color-cyber-card: #0d1326;
-  --color-cyber-surface: #121a33;
-  --color-cyber-border: rgba(0, 240, 255, 0.2);
-  --color-cyber-border-hover: rgba(0, 240, 255, 0.5);
+  --color-cyber-void: #020611;
+  --color-cyber-navy: #050816;
+  --color-cyber-card: #080B18;
+  --color-cyber-surface: #0e1424;
+  --color-cyber-text: #E6F7FF;
+  --color-cyber-muted: #6E849F;
+  --color-cyber-border: rgba(0, 229, 255, 0.35);
+  --color-cyber-border-hover: rgba(0, 229, 255, 0.6);
+}
+
+:root {
+  --cyber-bg-0: #020611;
+  --cyber-bg-1: #050816;
+  --cyber-bg-2: #080B18;
+  --cyber-cyan: #00E5FF;
+  --cyber-blue: #159DFF;
+  --cyber-purple: #8B5CF6;
+  --cyber-magenta: #FF2BA6;
+  --cyber-pink: #FF4DB8;
+  --cyber-text: #E6F7FF;
+  --cyber-muted: #6E849F;
+  --cyber-border: rgba(0, 229, 255, 0.35);
 }
 
 @layer base {

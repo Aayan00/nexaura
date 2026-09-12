@@ -1,7 +1,7 @@
 // Nexaura Native Fetch API Client (Strictly No Axios)
 import type { Task, UserProfile, Achievement, ShopItem, FocusSession } from '../types/rpg';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000/api';
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
@@ -32,17 +32,26 @@ export const api = {
   // Authentication & Session
   auth: {
     getMe: () => request<{ success: boolean; user: UserProfile }>('/auth/me'),
+    register: (data: { username: string; email: string; password: string; character_class?: string }) =>
+      request<{ success: boolean; message: string; user?: UserProfile }>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
     signup: (username: string, email: string, password?: string, character_class?: string) =>
-      request<{ success: boolean; user: UserProfile }>('/auth/signup', {
+      request<{ success: boolean; message: string; user?: UserProfile }>('/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ username, email, password: password || 'cyberpunk2077', character_class }),
+        body: JSON.stringify({ username, email, password: password || '', character_class }),
       }),
-    login: (username: string, password?: string) =>
-      request<{ success: boolean; user: UserProfile }>('/auth/login', {
+    login: (usernameOrEmail: string, password?: string) =>
+      request<{ success: boolean; message: string; user: UserProfile }>('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ username, password: password || 'cyberpunk2077' }),
+        body: JSON.stringify({
+          username: usernameOrEmail,
+          email: usernameOrEmail,
+          password: password || '',
+        }),
       }),
-    logout: () => request<{ success: boolean }>('/auth/logout', { method: 'POST' }),
+    logout: () => request<{ success: boolean; message: string }>('/auth/logout', { method: 'POST' }),
   },
 
   // Tasks & Boss Missions

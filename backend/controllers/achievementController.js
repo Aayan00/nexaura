@@ -3,7 +3,10 @@ import { isDBConnected, query, memoryStore } from '../db.js';
 export const achievementController = {
   getAchievements: async (req, res) => {
     try {
-      const userId = req.session?.userId || (memoryStore.users[0]?.id || 'usr_cypher_01');
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Authentication required.' });
+      }
 
       if (isDBConnected()) {
         const achievements = await query('SELECT * FROM achievements WHERE user_id = ? OR user_id IS NULL', [userId]);
@@ -45,14 +48,17 @@ export const achievementController = {
 
   claimAchievement: async (req, res) => {
     try {
-      const userId = req.session?.userId || (memoryStore.users[0]?.id || 'usr_cypher_01');
+      const userId = req.session?.user?.id || req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Authentication required.' });
+      }
       const { id } = req.params;
 
       let ach = null;
       let stats = null;
 
       if (isDBConnected()) {
-        const achs = await query('SELECT * FROM achievements WHERE id = ?', [id]);
+        const achs = await query('SELECT * FROM achievements WHERE id = ? AND (user_id = ? OR user_id IS NULL)', [id, userId]);
         if (!achs || achs.length === 0) {
           return res.status(404).json({ success: false, message: 'Achievement accolade not found.' });
         }
